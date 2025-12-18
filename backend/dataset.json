@@ -1,0 +1,177 @@
+[
+  {
+    "interest": "desain",
+    "skills": ["canva", "editing"],
+    "experience": "pemula",
+    "personality": "introvert",
+    "job": "Graphic Designer"
+  },
+  {
+    "interest": "marketing",
+    "skills": ["copywriting", "social media"],
+    "experience": "menengah",
+    "personality": "extrovert",
+    "job": "Digital Marketing Manager"
+  },
+  {
+    "interest": "administrasi",
+    "skills": ["ms office"],
+    "experience": "pemula",
+    "personality": "ambivert",
+    "job": "Admin Officer"
+  },
+  {
+    "interest": "teknologi",
+    "skills": ["programming", "database"],
+    "experience": "menengah",
+    "personality": "introvert",
+    "job": "Backend Developer"
+  },
+  {
+    "interest": "desain",
+    "skills": ["figma", "prototyping"],
+    "experience": "menengah",
+    "personality": "introvert",
+    "job": "UI/UX Designer"
+  },
+  {
+    "interest": "penjualan",
+    "skills": ["komunikasi", "persuasi"],
+    "experience": "menengah",
+    "personality": "extrovert",
+    "job": "Sales Executive"
+  },
+  {
+    "interest": "teknologi",
+    "skills": ["networking", "troubleshooting"],
+    "experience": "pemula",
+    "personality": "ambivert",
+    "job": "IT Support Specialist"
+  },
+  {
+    "interest": "administrasi",
+    "skills": ["ms office", "komunikasi"],
+    "experience": "menengah",
+    "personality": "ambivert",
+    "job": "Office Manager"
+  },
+  {
+    "interest": "marketing",
+    "skills": ["seo", "analytics"],
+    "experience": "menengah",
+    "personality": "ambivert",
+    "job": "SEO Specialist"
+  },
+  {
+    "interest": "desain",
+    "skills": ["video editing", "adobe"],
+    "experience": "menengah",
+    "personality": "introvert",
+    "job": "Video Editor"
+  },
+  {
+    "interest": "penjualan",
+    "skills": ["komunikasi", "negosiasi"],
+    "experience": "senior",
+    "personality": "extrovert",
+    "job": "Business Development Manager"
+  },
+  {
+    "interest": "teknologi",
+    "skills": ["programming", "web development"],
+    "experience": "menengah",
+    "personality": "introvert",
+    "job": "Frontend Developer"
+  },
+  {
+    "interest": "administrasi",
+    "skills": ["data entry", "organization"],
+    "experience": "pemula",
+    "personality": "introvert",
+    "job": "Data Entry Operator"
+  },
+  {
+    "interest": "marketing",
+    "skills": ["content writing", "branding"],
+    "experience": "pemula",
+    "personality": "ambivert",
+    "job": "Content Creator"
+  },
+  {
+    "interest": "desain",
+    "skills": ["branding", "illustration"],
+    "experience": "senior",
+    "personality": "introvert",
+    "job": "Brand Designer"
+  },
+  {
+    "interest": "teknologi",
+    "skills": ["data analysis", "sql"],
+    "experience": "menengah",
+    "personality": "introvert",
+    "job": "Data Analyst"
+  },
+  {
+    "interest": "penjualan",
+    "skills": ["customer service", "komunikasi"],
+    "experience": "pemula",
+    "personality": "extrovert",
+    "job": "Customer Service Representative"
+  },
+  {
+    "interest": "marketing",
+    "skills": ["email marketing", "automation"],
+    "experience": "menengah",
+    "personality": "ambivert",
+    "job": "Marketing Automation Specialist"
+  },
+  {
+    "interest": "desain",
+    "skills": ["web design", "ux research"],
+    "experience": "menengah",
+    "personality": "ambivert",
+    "job": "Web Designer"
+  },
+  {
+    "interest": "teknologi",
+    "skills": ["cloud computing", "devops"],
+    "experience": "senior",
+    "personality": "ambivert",
+    "job": "DevOps Engineer"
+  },
+  {
+    "interest": "administrasi",
+    "skills": ["project management", "ms office"],
+    "experience": "senior",
+    "personality": "ambivert",
+    "job": "Project Coordinator"
+  },
+  {
+    "interest": "penjualan",
+    "skills": ["persuasi", "networking"],
+    "experience": "menengah",
+    "personality": "extrovert",
+    "job": "Account Executive"
+  },
+  {
+    "interest": "marketing",
+    "skills": ["paid ads", "google ads"],
+    "experience": "menengah",
+    "personality": "ambivert",
+    "job": "PPC Specialist"
+  },
+  {
+    "interest": "desain",
+    "skills": ["motion graphics", "animation"],
+    "experience": "senior",
+    "personality": "introvert",
+    "job": "Motion Graphics Designer"
+  },
+  {
+    "interest": "teknologi",
+    "skills": ["machine learning", "python"],
+    "experience": "senior",
+    "personality": "introvert",
+    "job": "Machine Learning Engineer"
+  }
+]

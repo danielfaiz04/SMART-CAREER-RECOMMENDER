@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="id">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Career Recommender</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="theme.css">
+    <link rel="stylesheet" href="enhancements.css">
+    <script src="theme.js"></script>
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <h1>💼 Smart Career Recommender</h1>
+            <p>Temukan rekomendasi karir yang sempurna untuk Anda</p>
+        </header>
+
+        <div class="form-container">
+            <form id="recommendationForm">
+                <!-- Minat -->
+                <div class="form-group">
+                    <label for="interest">🎯 Pilih Minat Anda</label>
+                    <select id="interest" name="interest" required>
+                        <option value="">-- Pilih Minat --</option>
+                        <option value="desain">Desain</option>
+                        <option value="marketing">Marketing</option>
+                        <option value="administrasi">Administrasi</option>
+                        <option value="teknologi">Teknologi</option>
+                        <option value="penjualan">Penjualan</option>
+                    </select>
+                </div>
+
+                <!-- Skill -->
+                <div class="form-group">
+                    <label>💻 Skill yang Anda Miliki</label>
+                    <div class="checkbox-group" id="skillsContainer">
+                        <p id="skillsLoading" class="loading-text">⏳ Memuat skills...</p>
+                    </div>
+                </div>
+
+                <!-- Pengalaman -->
+                <div class="form-group">
+                    <label for="experience">📊 Pengalaman Kerja</label>
+                    <select id="experience" name="experience" required>
+                        <option value="">-- Pilih Pengalaman --</option>
+                        <option value="pemula">Pemula (< 1 tahun)</option>
+                        <option value="menengah">Menengah (1-5 tahun)</option>
+                        <option value="senior">Senior (> 5 tahun)</option>
+                    </select>
+                </div>
+
+                <!-- Kepribadian -->
+                <div class="form-group">
+                    <label>🧠 Tipe Kepribadian</label>
+                    <div class="radio-group">
+                        <div class="radio-item">
+                            <input type="radio" id="introvert" name="personality" value="introvert" required>
+                            <label for="introvert">Introvert</label>
+                        </div>
+                        <div class="radio-item">
+                            <input type="radio" id="ambivert" name="personality" value="ambivert" required>
+                            <label for="ambivert">Ambivert</label>
+                        </div>
+                        <div class="radio-item">
+                            <input type="radio" id="extrovert" name="personality" value="extrovert" required>
+                            <label for="extrovert">Extrovert</label>
+                        </div>
+                    </div>
+                </div>
+
+                <button type="submit" id="submitBtn">Dapatkan Rekomendasi</button>
+                <button type="button" class="secondary" id="historyBtn">📋 Lihat Riwayat</button>
+            </form>
+        </div>
+
+        <!-- History Modal -->
+        <div id="historyModal" class="hidden">
+            <div class="form-container">
+                <div class="history-header">
+                    <h2>Riwayat Rekomendasi</h2>
+                    <button type="button" class="secondary close-history-btn" id="closeHistoryBtn">✕</button>
+                </div>
+                <div id="historyContent" class="history-content">
+                    <!-- History items akan di-load di sini -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:5000';
+
+        // Load available options
+        async function loadOptions() {
+            const skillsContainer = document.getElementById('skillsContainer');
+            const loadingText = document.getElementById('skillsLoading');
+
+            try {
+                const response = await fetch(`${API_URL}/api/options`);
+                const data = await response.json();
+
+                if (data.success) {
+                    // Load skills
+                    skillsContainer.innerHTML = '';
+                    data.skills.forEach(skill => {
+                        const checkbox = document.createElement('div');
+                        checkbox.className = 'checkbox-item';
+                        checkbox.innerHTML = `
+                            <input type="checkbox" id="skill_${skill}" name="skills" value="${skill}">
+                            <label for="skill_${skill}">${skill}</label>
+                        `;
+                        skillsContainer.appendChild(checkbox);
+                    });
+                } else {
+                    skillsContainer.innerHTML = '<p style="color: #ef4444;">❌ Gagal memuat skills. Coba refresh halaman.</p>';
+                }
+            } catch (error) {
+                console.error('Error loading options:', error);
+                skillsContainer.innerHTML = `
+                    <p style="color: #ef4444;">❌ Tidak dapat terhubung ke server.</p>
+                    <p style="color: #888; font-size: 13px;">Pastikan server running di http://localhost:5000</p>
+                `;
+            }
+        }
+
+        // Form submission
+        document.getElementById('recommendationForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const interest = document.getElementById('interest').value;
+            const skills = Array.from(document.querySelectorAll('input[name="skills"]:checked'))
+                .map(el => el.value);
+            const experience = document.getElementById('experience').value;
+            const personalityElement = document.querySelector('input[name="personality"]:checked');
+            const personality = personalityElement ? personalityElement.value : null;
+
+            // Validasi dengan pesan spesifik
+            if (!interest) {
+                alert('⚠️ Harap pilih minat Anda');
+                return;
+            }
+            if (skills.length === 0) {
+                alert('⚠️ Harap pilih minimal 1 skill yang Anda miliki');
+                return;
+            }
+            if (!experience) {
+                alert('⚠️ Harap pilih pengalaman kerja Anda');
+                return;
+            }
+            if (!personality) {
+                alert('⚠️ Harap pilih tipe kepribadian Anda');
+                return;
+            }
+
+            const submitBtn = document.getElementById('submitBtn');
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Memproses...';
+
+            try {
+                const response = await fetch(`${API_URL}/predict`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        interest,
+                        skills,
+                        experience,
+                        personality
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    // Store user info untuk export
+                    sessionStorage.setItem('lastInterest', interest);
+                    sessionStorage.setItem('lastSkills', JSON.stringify(skills));
+                    sessionStorage.setItem('lastExperience', experience);
+                    sessionStorage.setItem('lastPersonality', personality);
+
+                    // Store results dan redirect ke result page
+                    sessionStorage.setItem('recommendationResults', JSON.stringify(data.jobs));
+                    window.location.href = 'result.html';
+                } else {
+                    alert('Error: ' + data.error);
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Terjadi kesalahan. Pastikan server berjalan!');
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Dapatkan Rekomendasi';
+            }
+        });
+
+        // History button
+        document.getElementById('historyBtn').addEventListener('click', async () => {
+            try {
+                const response = await fetch(`${API_URL}/history`);
+                const data = await response.json();
+
+                if (data.success && data.history.length > 0) {
+                    let historyHTML = '';
+                    data.history.slice().reverse().forEach((item, index) => {
+                        const date = new Date(item.timestamp).toLocaleString('id-ID');
+                        historyHTML += `
+                            <div style="padding: 15px; border: 1px solid #e0e0e0; border-radius: 8px; margin-bottom: 10px;">
+                                <p><strong>${index + 1}. ${date}</strong></p>
+                                <p>Minat: <strong>${item.interest}</strong></p>
+                                <p>Skill: <strong>${item.skills.join(', ')}</strong></p>
+                                <p>Pengalaman: <strong>${item.experience}</strong></p>
+                                <p>Kepribadian: <strong>${item.personality}</strong></p>
+                                <p>Top Job: <strong>${item.results[0].title}</strong> (${item.results[0].score}%)</p>
+                            </div>
+                        `;
+                    });
+                    document.getElementById('historyContent').innerHTML = historyHTML;
+                } else {
+                    document.getElementById('historyContent').innerHTML = '<p>Belum ada riwayat rekomendasi.</p>';
+                }
+
+                document.getElementById('historyModal').classList.remove('hidden');
+            } catch (error) {
+                console.error('Error loading history:', error);
+                alert('Tidak dapat memuat riwayat');
+            }
+        });
+
+        document.getElementById('closeHistoryBtn').addEventListener('click', () => {
+            document.getElementById('historyModal').classList.add('hidden');
+        });
+
+        // Load options on page load
+        loadOptions();
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,215 @@
+/* ============================================
+   ENHANCED THEME SYSTEM
+   Smooth Dark/Light Mode Transitions
+   ============================================ */
+
+/* Theme variables already defined in style.css */
+
+/* ============================================
+   THEME TOGGLE ENHANCEMENTS
+   ============================================ */
+
+.theme-toggle {
+    background: var(--bg-card);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid var(--border-color);
+}
+
+.theme-toggle::after {
+    content: '';
+    position: absolute;
+    inset: -2px;
+    border-radius: inherit;
+    background: var(--bg-gradient);
+    opacity: 0;
+    transition: opacity var(--transition-base);
+    z-index: -1;
+}
+
+.theme-toggle:hover::after {
+    opacity: 0.1;
+}
+
+/* ============================================
+   DARK MODE SPECIFIC STYLES
+   ============================================ */
+
+[data-theme="dark"] body::before {
+    opacity: 0.08;
+}
+
+[data-theme="dark"] .form-container {
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+[data-theme="dark"] .job-card {
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+
+[data-theme="dark"] .job-card:hover {
+    box-shadow: 0 12px 48px rgba(0, 0, 0, 0.5);
+}
+
+[data-theme="dark"] select,
+[data-theme="dark"] input,
+[data-theme="dark"] textarea {
+    background: var(--bg-primary);
+}
+
+[data-theme="dark"] .checkbox-item,
+[data-theme="dark"] .radio-item {
+    background: var(--bg-primary);
+}
+
+[data-theme="dark"] .checkbox-item:hover,
+[data-theme="dark"] .radio-item:hover {
+    background: var(--bg-secondary);
+}
+
+[data-theme="dark"] button.secondary {
+    background: var(--bg-primary);
+}
+
+[data-theme="dark"] .skill-badge {
+    background: var(--bg-primary);
+}
+
+[data-theme="dark"] .summary-card {
+    box-shadow: 0 12px 48px rgba(0, 0, 0, 0.6);
+}
+
+/* ============================================
+   SMOOTH TRANSITIONS
+   ============================================ */
+
+* {
+    transition:
+        background-color var(--transition-base),
+        border-color var(--transition-base),
+        color var(--transition-base),
+        box-shadow var(--transition-base);
+}
+
+/* Exclude elements that need custom transitions */
+button,
+.action-btn,
+.theme-toggle,
+.job-card,
+.checkbox-item,
+.radio-item,
+.skill-badge {
+    transition: all var(--transition-base);
+}
+
+/* ============================================
+   GRADIENT TEXT FOR HEADINGS IN DARK MODE
+   ============================================ */
+
+[data-theme="dark"] header h1 {
+    background: linear-gradient(135deg, #a78bfa 0%, #c084fc 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+[data-theme="dark"] .section-title {
+    color: var(--accent-secondary);
+}
+
+/* ============================================
+   ENHANCED FOCUS STATES FOR DARK MODE
+   ============================================ */
+
+[data-theme="dark"] select:focus,
+[data-theme="dark"] input:focus,
+[data-theme="dark"] textarea:focus {
+    box-shadow: 0 0 0 4px rgba(139, 92, 246, 0.2);
+}
+
+/* ============================================
+   MODAL BACKDROP DARK MODE
+   ============================================ */
+
+[data-theme="dark"] #historyModal {
+    background: rgba(0, 0, 0, 0.8);
+}
+
+/* ============================================
+   SCROLLBAR DARK MODE
+   ============================================ */
+
+[data-theme="dark"] ::-webkit-scrollbar-track {
+    background: var(--bg-primary);
+}
+
+[data-theme="dark"] ::-webkit-scrollbar-thumb {
+    background: var(--border-color);
+}
+
+[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
+    background: var(--accent-primary);
+}
+
+/* ============================================
+   LOADING STATES DARK MODE
+   ============================================ */
+
+[data-theme="dark"] .loading-overlay {
+    background: rgba(15, 23, 42, 0.9);
+}
+
+[data-theme="dark"] .loading-content {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+}
+
+/* ============================================
+   TOAST NOTIFICATIONS DARK MODE
+   ============================================ */
+
+[data-theme="dark"] .toast {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+}
+
+[data-theme="dark"] .toast.error {
+    background: rgba(239, 68, 68, 0.2);
+    border-color: var(--accent-error);
+    color: var(--accent-error);
+}
+
+[data-theme="dark"] .toast.info {
+    background: rgba(66, 153, 225, 0.2);
+    border-color: var(--accent-info);
+    color: var(--accent-info);
+}
+
+/* ============================================
+   PRINT STYLES (Same for both themes)
+   ============================================ */
+
+@media print {
+
+    body::before,
+    .theme-toggle,
+    button.secondary,
+    .chat-btn,
+    .action-btn {
+        display: none !important;
+    }
+
+    body {
+        background: white;
+        color: black;
+    }
+
+    .job-card,
+    .form-container,
+    .summary-card {
+        box-shadow: none;
+        border: 1px solid #ddd;
+        page-break-inside: avoid;
+    }
+}

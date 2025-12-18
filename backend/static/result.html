@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="id">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hasil Rekomendasi - Smart Career Recommender</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="theme.css">
+    <link rel="stylesheet" href="enhancements.css">
+    <script src="theme.js"></script>
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <h1>📊 Hasil Rekomendasi</h1>
+            <p>Karir impian Anda menunggu</p>
+        </header>
+
+        <div class="results-container">
+            <button type="button" class="secondary" id="backBtn">← Kembali</button>
+
+            <div class="summary-card">
+                <h2>✨ Top 3 Rekomendasi Karir</h2>
+                <p id="summaryText">Berdasarkan analisis skill dan preferensi Anda</p>
+            </div>
+
+            <div id="resultsContent">
+                <!-- Results akan di-load di sini -->
+            </div>
+
+            <button type="button" class="secondary" id="newRecommendationBtn">🔄 Coba Lagi</button>
+            <button type="button" class="secondary" id="exportBtn">📥 Download CSV</button>
+            <button type="button" class="secondary" id="printBtn">🖨️ Print</button>
+
+            <div class="chat-section">
+                <button type="button" class="chat-btn" onclick="openCareerChat()">
+                    💬 Konsultasi dengan Career Advisor AI
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Load results from sessionStorage
+        const results = JSON.parse(sessionStorage.getItem('recommendationResults') || '[]');
+
+        if (results.length === 0) {
+            window.location.href = 'index.html';
+        }
+
+        const resultsContent = document.getElementById('resultsContent');
+        let html = '';
+
+        results.forEach((job, index) => {
+            html += `
+                <div class="job-card">
+                    <div class="job-header">
+                        <div>
+                            <div class="job-title">${index + 1}. ${job.title}</div>
+                        </div>
+                        <div class="match-score">${job.score}%</div>
+                    </div>
+
+                    <div class="job-section">
+                        <div class="section-title">📚 Skill yang Perlu Dipelajari</div>
+                        <div class="skills-list">
+                            ${job.skills_to_learn && job.skills_to_learn.length > 0
+                    ? job.skills_to_learn.map(skill => `<span class="skill-badge">${skill}</span>`).join('')
+                    : '<span class="skill-badge">Sudah memiliki skill dasar</span>'
+                }
+                        </div>
+                    </div>
+
+                    <div class="job-section">
+                        <div class="section-title">🗺️ Roadmap Pembelajaran</div>
+                        <div class="roadmap-text">
+                            ${job.roadmap}
+                        </div>
+                    </div>
+
+                    <div class="job-actions">
+                        <button class="action-btn linkedin-btn" onclick="openLinkedInJobs('${job.title}')">
+                            💼 Cari di LinkedIn
+                        </button>
+                        <button class="action-btn details-btn" onclick="openJobDetails('${job.title}', ${index})">
+                            📖 Detail Pekerjaan
+                        </button>
+                    </div>
+                </div>
+            `;
+        });
+
+        resultsContent.innerHTML = html;
+
+        // Back button
+        document.getElementById('backBtn').addEventListener('click', () => {
+            window.location.href = 'index.html';
+        });
+
+        // New recommendation button
+        document.getElementById('newRecommendationBtn').addEventListener('click', () => {
+            sessionStorage.removeItem('recommendationResults');
+            window.location.href = 'index.html';
+        });
+
+        // LinkedIn Job Finder
+        function openLinkedInJobs(jobTitle) {
+            const searchQuery = encodeURIComponent(jobTitle);
+            const linkedInUrl = `https://www.linkedin.com/jobs/search/?keywords=${searchQuery}`;
+            window.open(linkedInUrl, '_blank');
+        }
+
+        // Open Job Details Page
+        function openJobDetails(jobTitle, index) {
+            sessionStorage.setItem('selectedJobTitle', jobTitle);
+            sessionStorage.setItem('selectedJobIndex', index);
+            sessionStorage.setItem('selectedJobData', JSON.stringify(results[index]));
+            window.location.href = 'job-detail.html';
+        }
+
+        // Chat dengan Career Advisor
+        function openCareerChat() {
+            window.location.href = 'career-chat.html';
+        }
+
+        // Export to CSV
+        document.getElementById('exportBtn').addEventListener('click', async () => {
+            try {
+                const userInfo = {
+                    interest: sessionStorage.getItem('lastInterest') || '-',
+                    skills: JSON.parse(sessionStorage.getItem('lastSkills') || '[]'),
+                    experience: sessionStorage.getItem('lastExperience') || '-',
+                    personality: sessionStorage.getItem('lastPersonality') || '-'
+                };
+
+                const response = await fetch('http://localhost:5000/api/export', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ jobs: results, user_info: userInfo })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    // Download CSV
+                    const blob = new Blob([data.data], { type: 'text/csv;charset=utf-8;' });
+                    const link = document.createElement('a');
+                    link.href = URL.createObjectURL(blob);
+                    link.download = data.filename;
+                    link.click();
+                    URL.revokeObjectURL(link.href);
+                } else {
+                    alert('Gagal export: ' + data.error);
+                }
+            } catch (error) {
+                console.error('Export error:', error);
+                alert('Tidak dapat export data. Pastikan server berjalan!');
+            }
+        });
+
+        // Print functionality
+        document.getElementById('printBtn').addEventListener('click', () => {
+            window.print();
+        });
+    </script>
+</body>
+
+</html>

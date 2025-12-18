@@ -1,0 +1,1277 @@
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+import pickle
+import json
+import numpy as np
+from datetime import datetime
+import os
+from dotenv import load_dotenv
+import google.generativeai as genai
+
+app = Flask(__name__)
+CORS(app)
+
+# Get the directory where app.py is located
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# Load environment variables
+load_dotenv(os.path.join(BASE_DIR, '.env'))
+
+# Configure Gemini API
+USE_LLM = os.getenv('USE_LLM', 'false').lower() == 'true'
+FALLBACK_TO_DATABASE = os.getenv('FALLBACK_TO_DATABASE', 'true').lower() == 'true'
+GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', '')
+
+if USE_LLM and GEMINI_API_KEY:
+    try:
+        genai.configure(api_key=GEMINI_API_KEY)
+        llm_model = genai.GenerativeModel('gemini-pro')
+        print("✅ Gemini API configured successfully")
+    except Exception as e:
+        print(f"⚠️ Failed to configure Gemini API: {e}")
+        USE_LLM = False
+else:
+    llm_model = None
+    if not GEMINI_API_KEY:
+        print("⚠️ GEMINI_API_KEY not found. LLM features disabled.")
+    print("ℹ️ Using fallback database responses")
+
+# Load trained model and encoders
+model_path = os.path.join(BASE_DIR, 'model.pkl')
+with open(model_path, 'rb') as f:
+    model_data = pickle.load(f)
+
+model = model_data['model']
+interest_encoder = model_data['interest_encoder']
+experience_encoder = model_data['experience_encoder']
+personality_encoder = model_data['personality_encoder']
+job_encoder = model_data['job_encoder']
+mlb = model_data['mlb']
+
+# Load dataset for skill recommendations
+dataset_path = os.path.join(BASE_DIR, 'dataset.json')
+with open(dataset_path, 'r') as f:
+    training_data = json.load(f)
+
+# Define skill roadmaps
+skill_roadmaps = {
+    "Graphic Designer": ["Kuasai Canva → Belajar Adobe Creative → Editing lanjutan → Portfolio design"],
+    "Digital Marketing Manager": ["Copywriting dasar → Social media strategy → Analytics tools → Paid ads"],
+    "Admin Officer": ["MS Office expert → File management → Office automation → Communication skills"],
+    "Backend Developer": ["Python/JavaScript fundamentals → Database design → API development → DevOps"],
+    "UI/UX Designer": ["Design principles → Figma mastery → User research → Prototyping"],
+    "Sales Executive": ["Communication skills → Product knowledge → Negotiation → CRM tools"],
+    "IT Support Specialist": ["Networking basics → Troubleshooting → Hardware knowledge → Ticketing systems"],
+    "Office Manager": ["Project management → MS Office → Communication → Leadership"],
+    "SEO Specialist": ["SEO fundamentals → Keyword research → Google Analytics → Technical SEO"],
+    "Video Editor": ["Video editing software → Color grading → Audio editing → Motion graphics"],
+    "Business Development Manager": ["Market research → Negotiation → Strategic planning → CRM"],
+    "Frontend Developer": ["HTML/CSS → JavaScript → React → Responsive design"],
+    "Data Entry Operator": ["Typing speed → MS Excel → Data accuracy → Attention to detail"],
+    "Content Creator": ["Content planning → Writing → Social media → Video creation"],
+    "Brand Designer": ["Brand strategy → Logo design → Visual identity → Branding guidelines"],
+    "Data Analyst": ["SQL → Python → Data visualization → Statistical analysis"],
+    "Customer Service Representative": ["Communication → Product knowledge → Problem solving → Empathy"],
+    "Marketing Automation Specialist": ["Email marketing → Automation tools → Analytics → Lead nurturing"],
+    "Web Designer": ["HTML/CSS → Responsive design → UX principles → Web accessibility"],
+    "DevOps Engineer": ["Linux → Docker → Kubernetes → CI/CD → Cloud platforms"],
+    "Project Coordinator": ["Project management tools → Communication → Timeline management → Risk management"],
+    "Account Executive": ["Client relationship → Negotiation → Sales process → Account management"],
+    "PPC Specialist": ["Google Ads → Facebook Ads → Conversion tracking → A/B testing"],
+    "Motion Graphics Designer": ["After Effects → Animation principles → Motion design → 3D basics"],
+    "Machine Learning Engineer": ["Python → Mathematics → Machine learning frameworks → Deep learning"]
+}
+
+# Define skills needed for each job
+job_skills_required = {
+    "Graphic Designer": ["canva", "editing", "design", "adobe"],
+    "Digital Marketing Manager": ["copywriting", "social media", "marketing", "analytics"],
+    "Admin Officer": ["ms office", "organization", "communication"],
+    "Backend Developer": ["programming", "database", "api", "backend"],
+    "UI/UX Designer": ["figma", "prototyping", "ux", "design"],
+    "Sales Executive": ["komunikasi", "persuasi", "sales"],
+    "IT Support Specialist": ["networking", "troubleshooting", "it", "technical"],
+    "Office Manager": ["project management", "ms office", "organization"],
+    "SEO Specialist": ["seo", "analytics", "marketing", "content"],
+    "Video Editor": ["video editing", "adobe", "editing"],
+    "Business Development Manager": ["komunikasi", "persuasi", "strategy"],
+    "Frontend Developer": ["programming", "web development", "javascript"],
+    "Data Entry Operator": ["data entry", "ms office", "accuracy"],
+    "Content Creator": ["content writing", "social media", "communication"],
+    "Brand Designer": ["branding", "illustration", "design"],
+    "Data Analyst": ["data analysis", "sql", "python", "analytics"],
+    "Customer Service Representative": ["customer service", "komunikasi", "empathy"],
+    "Marketing Automation Specialist": ["email marketing", "automation", "analytics"],
+    "Web Designer": ["web design", "ux research", "html", "css"],
+    "DevOps Engineer": ["cloud computing", "devops", "linux", "docker"],
+    "Project Coordinator": ["project management", "organization", "communication"],
+    "Account Executive": ["komunikasi", "persuasi", "sales"],
+    "PPC Specialist": ["paid ads", "google ads", "analytics"],
+    "Motion Graphics Designer": ["motion graphics", "animation", "adobe"],
+    "Machine Learning Engineer": ["machine learning", "python", "programming"]
+}
+
+# Rule-based recommendations
+def get_rule_based_recommendations(interest, skills, experience, personality):
+    """Apply rules to get job recommendations"""
+    recommendations = []
+    
+    # Rule 1: Introvert + Design → Graphic Designer, UI/UX Designer
+    if personality == "introvert" and interest == "desain":
+        recommendations.extend(["Graphic Designer", "UI/UX Designer", "Video Editor"])
+    
+    # Rule 2: Extrovert + Marketing → Digital Marketing, Sales
+    if personality == "extrovert" and interest == "marketing":
+        recommendations.extend(["Digital Marketing Manager", "PPC Specialist"])
+    
+    # Rule 3: Extrovert + Sales → Sales Executive
+    if personality == "extrovert" and interest == "penjualan":
+        recommendations.extend(["Sales Executive", "Account Executive", "Business Development Manager"])
+    
+    # Rule 4: Admin skills + Office experience
+    if "ms office" in skills and interest == "administrasi":
+        recommendations.extend(["Admin Officer", "Office Manager", "Project Coordinator"])
+    
+    # Rule 5: Tech skills + Technology interest
+    if interest == "teknologi":
+        if any(skill in skills for skill in ["programming", "database"]):
+            recommendations.extend(["Backend Developer", "Data Analyst"])
+        if any(skill in skills for skill in ["networking", "troubleshooting"]):
+            recommendations.extend(["IT Support Specialist", "DevOps Engineer"])
+        if any(skill in skills for skill in ["machine learning", "python"]):
+            recommendations.append("Machine Learning Engineer")
+    
+    # Rule 6: Data entry + Admin = Data Entry Operator
+    if "data entry" in skills and experience == "pemula":
+        recommendations.append("Data Entry Operator")
+    
+    # Rule 7: Frontend skills
+    if any(skill in skills for skill in ["web development", "html"]):
+        recommendations.extend(["Frontend Developer", "Web Designer"])
+    
+    # Rule 8: Content + Marketing = Content Creator
+    if "content writing" in skills and interest == "marketing":
+        recommendations.append("Content Creator")
+    
+    # Rule 9: Ambivert + Marketing = Marketing specialist roles
+    if personality == "ambivert" and interest == "marketing":
+        recommendations.extend(["SEO Specialist", "Marketing Automation Specialist", "Content Creator"])
+    
+    return list(set(recommendations))  # Remove duplicates
+
+def calculate_match_score(job_title, user_skills):
+    """Calculate skill match score for a job"""
+    required_skills = job_skills_required.get(job_title, [])
+    if not required_skills:
+        return 50
+    
+    matched = sum(1 for skill in required_skills if any(user_skill.lower() in skill.lower() or skill.lower() in user_skill.lower() for user_skill in user_skills))
+    score = (matched / len(required_skills)) * 100
+    return min(100, int(score) + 30)  # Add base score
+
+def get_skills_to_learn(job_title, user_skills):
+    """Get skills user needs to learn for a specific job"""
+    required_skills = job_skills_required.get(job_title, [])
+    skills_to_learn = []
+    
+    for skill in required_skills:
+        if not any(user_skill.lower() in skill.lower() or skill.lower() in user_skill.lower() for user_skill in user_skills):
+            skills_to_learn.append(skill)
+    
+    return skills_to_learn[:3]  # Return top 3 skills
+
+@app.route('/predict', methods=['POST'])
+def predict():
+    """Main prediction endpoint"""
+    try:
+        data = request.json
+        interest = data.get('interest', '').lower()
+        skills = [s.lower() for s in data.get('skills', [])]
+        experience = data.get('experience', '').lower()
+        personality = data.get('personality', '').lower()
+        
+        # Get rule-based recommendations
+        rule_recommendations = get_rule_based_recommendations(interest, skills, experience, personality)
+        
+        # Get ML predictions
+        try:
+            interest_enc = interest_encoder.transform([interest])[0]
+            experience_enc = experience_encoder.transform([experience])[0]
+            personality_enc = personality_encoder.transform([personality])[0]
+            skills_enc = mlb.transform([skills])[0]
+            
+            X_input = np.hstack([
+                np.array([interest_enc]),
+                np.array([experience_enc]),
+                np.array([personality_enc]),
+                skills_enc.reshape(1, -1)
+            ])
+            
+            # Get predictions with probabilities
+            predictions = model.predict(X_input)[0]
+            predicted_job = job_encoder.inverse_transform([predictions])[0]
+            
+            # Combine rule-based and ML predictions
+            all_jobs = list(set(rule_recommendations + [predicted_job]))
+        except:
+            # Fallback if encoding fails
+            all_jobs = rule_recommendations if rule_recommendations else ["Graphic Designer", "IT Support Specialist", "Admin Officer"]
+        
+        # Generate detailed recommendations
+        results = []
+        for job in all_jobs[:3]:  # Top 3 recommendations
+            match_score = calculate_match_score(job, skills)
+            skills_to_learn = get_skills_to_learn(job, skills)
+            roadmap = skill_roadmaps.get(job, "Lanjutkan pengembangan skill yang relevan dengan posisi")
+            
+            results.append({
+                "title": job,
+                "score": match_score,
+                "skills_to_learn": skills_to_learn,
+                "roadmap": roadmap
+            })
+        
+        # Sort by score
+        results = sorted(results, key=lambda x: x['score'], reverse=True)
+        
+        # Save to history
+        save_to_history({
+            "interest": interest,
+            "skills": skills,
+            "experience": experience,
+            "personality": personality,
+            "results": results
+        })
+        
+        return jsonify({
+            "success": True,
+            "jobs": results
+        })
+    
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 400
+
+@app.route('/history', methods=['GET'])
+def get_history():
+    """Get prediction history"""
+    try:
+        history_path = os.path.join(BASE_DIR, 'history.json')
+        if os.path.exists(history_path):
+            with open(history_path, 'r') as f:
+                history = json.load(f)
+            return jsonify({
+                "success": True,
+                "history": history
+            })
+        return jsonify({
+            "success": True,
+            "history": []
+        })
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 400
+
+def save_to_history(prediction_data):
+    """Save prediction to history file"""
+    history = []
+    history_path = os.path.join(BASE_DIR, 'history.json')
+    
+    if os.path.exists(history_path):
+        try:
+            with open(history_path, 'r') as f:
+                history = json.load(f)
+        except:
+            history = []
+    
+    # Add timestamp
+    prediction_data['timestamp'] = datetime.now().isoformat()
+    history.append(prediction_data)
+    
+    # Keep only last 50 records
+    history = history[-50:]
+    
+    with open(history_path, 'w') as f:
+        json.dump(history, f, indent=2)
+
+@app.route('/api/options', methods=['GET'])
+def get_options():
+    """Get available options for form dropdowns"""
+    interests = list(set([entry['interest'] for entry in training_data]))
+    experiences = list(set([entry['experience'] for entry in training_data]))
+    personalities = ["introvert", "ambivert", "extrovert"]
+    
+    all_skills = set()
+    for entry in training_data:
+        all_skills.update(entry['skills'])
+    
+    return jsonify({
+        "success": True,
+        "interests": sorted(interests),
+        "experiences": sorted(experiences),
+        "personalities": personalities,
+        "skills": sorted(list(all_skills))
+    })
+
+# ============================================================================
+# LLM Helper Functions
+# ============================================================================
+
+def call_gemini_api(prompt, max_retries=2):
+    """Call Gemini API with retry logic"""
+    if not USE_LLM or not llm_model:
+        return None
+    
+    for attempt in range(max_retries):
+        try:
+            response = llm_model.generate_content(prompt)
+            return response.text
+        except Exception as e:
+            print(f"Gemini API error (attempt {attempt + 1}/{max_retries}): {e}")
+            if attempt == max_retries - 1:
+                return None
+    return None
+
+def generate_job_explanation_with_llm(job_title, user_skills=None, user_experience=None):
+    """Generate comprehensive job explanation using LLM"""
+    skills_context = f" User has skills: {', '.join(user_skills)}" if user_skills else ""
+    experience_context = f" Experience level: {user_experience}" if user_experience else ""
+    
+    prompt = f"""Anda adalah Career Advisor AI yang expert. Berikan penjelasan lengkap tentang pekerjaan "{job_title}" dalam format JSON.
+{skills_context}{experience_context}
+
+Berikan response dalam format JSON berikut (HARUS valid JSON, tanpa markdown):
+{{
+  "description": "Deskripsi lengkap pekerjaan ini (2-3 kalimat)",
+  "why_suitable": ["Alasan 1 kenapa cocok", "Alasan 2", "Alasan 3"],
+  "salary_range": "Rp X - Rp Y/bulan (untuk Indonesia)",
+  "skills_required": [
+    {{"skill": "Nama skill 1", "description": "Penjelasan skill"}},
+    {{"skill": "Nama skill 2", "description": "Penjelasan skill"}},
+    {{"skill": "Nama skill 3", "description": "Penjelasan skill"}},
+    {{"skill": "Nama skill 4", "description": "Penjelasan skill"}},
+    {{"skill": "Nama skill 5", "description": "Penjelasan skill"}}
+  ],
+  "pros": ["Keuntungan 1", "Keuntungan 2", "Keuntungan 3", "Keuntungan 4", "Keuntungan 5"],
+  "cons": ["Tantangan 1", "Tantangan 2", "Tantangan 3", "Tantangan 4", "Tantangan 5"],
+  "career_prospect": "Penjelasan prospek karir (2-3 kalimat)",
+  "next_steps": ["Langkah 1", "Langkah 2", "Langkah 3", "Langkah 4", "Langkah 5", "Langkah 6"]
+}}
+
+Pastikan response adalah valid JSON tanpa backticks atau markdown."""
+    
+    response_text = call_gemini_api(prompt)
+    
+    if response_text:
+        try:
+            # Clean response (remove markdown if present)
+            cleaned = response_text.strip()
+            if cleaned.startswith('```'):
+                # Remove markdown code blocks
+                lines = cleaned.split('\n')
+                cleaned = '\n'.join([l for l in lines if not l.strip().startswith('```')])
+            
+            # Parse JSON
+            data = json.loads(cleaned)
+            return data
+        except json.JSONDecodeError as e:
+            print(f"Failed to parse LLM JSON response: {e}")
+            print(f"Response was: {response_text[:200]}...")
+            return None
+    
+    return None
+
+def generate_chat_response_with_llm(user_message, job_context=None, conversation_history=None):
+    """Generate chat response using LLM"""
+    context = f"\nKonteks: User sedang mempertimbangkan posisi '{job_context}'." if job_context else ""
+    history = ""
+    if conversation_history:
+        history = "\n\nRiwayat percakapan:\n" + "\n".join(conversation_history[-5:])  # Last 5 messages
+    
+    prompt = f"""Anda adalah Career Advisor AI yang berpengalaman dan helpful. Jawab pertanyaan user dengan:
+- Profesional namun friendly
+- Spesifik dan actionable
+- Gunakan emoji yang sesuai
+- Format dengan bullet points atau numbering jika perlu
+- Maksimal 300 kata{context}{history}
+
+Pertanyaan user: {user_message}
+
+Jawaban Anda:"""
+    
+    response = call_gemini_api(prompt)
+    return response if response else None
+
+# ============================================================================
+# API Endpoints
+# ============================================================================
+
+# New Feature: Job Details with AI Explanation
+@app.route('/job-details', methods=['POST'])
+def job_details():
+    """Provide detailed job information with AI explanation"""
+    data = request.json
+    job_title = data.get('job_title', 'Unknown')
+    job_data = data.get('job_data', {})
+    
+    # Job details database
+    job_details_db = {
+        "Software Developer": {
+            "description": "Seorang Software Developer bertanggung jawab untuk merancang, mengembangkan, dan memelihara aplikasi dan sistem perangkat lunak. Mereka bekerja dengan bahasa pemrograman, framework, dan tools terbaru untuk membangun solusi yang scalable dan efficient.",
+            "why_suitable": [
+                "Anda memiliki dasar pemrograman yang kuat",
+                "Skill teknis Anda mencakup bahasa pemrograman utama",
+                "Pengalaman Anda sesuai dengan kebutuhan role ini"
+            ],
+            "salary_range": "Rp 6.000.000 - Rp 20.000.000/bulan",
+            "skills_required": [
+                {"skill": "Python/Java/JavaScript", "description": "Bahasa pemrograman utama untuk development"},
+                {"skill": "Database & SQL", "description": "Kemampuan mengelola database dan query optimization"},
+                {"skill": "Version Control (Git)", "description": "Essential untuk collaborative development"},
+                {"skill": "API Design & REST", "description": "Membuat dan mengintegrasikan API yang robust"},
+                {"skill": "Testing & Debugging", "description": "Memastikan kualitas code dan error handling"}
+            ],
+            "pros": [
+                "Demand pasar sangat tinggi dan job security terjamin",
+                "Potensi earning yang sangat baik",
+                "Terus belajar teknologi terbaru",
+                "Fleksibilitas work dari mana saja (remote-friendly)",
+                "Banyak kesempatan untuk advancement dan specialization"
+            ],
+            "cons": [
+                "Deadline yang tight dan tekanan pekerjaan tinggi",
+                "Ongoing learning requirement yang demanding",
+                "Debugging bisa memakan waktu dan frustrasi",
+                "Burnout risk jika tidak manage work-life balance",
+                "Teknologi berubah cepat, harus selalu update"
+            ],
+            "career_prospect": "Karir sebagai developer memiliki prospek sangat cerah. Anda bisa menjadi Senior Developer, Tech Lead, Architect, atau beralih ke Product Management/Startup Founder.",
+            "next_steps": [
+                "Perkuat fundamentals: algoritma, data structure, design patterns",
+                "Build project portfolio yang impressive di GitHub",
+                "Kuasai 2-3 tech stack yang trending (React, Node.js, etc)",
+                "Praktik problem solving di LeetCode/HackerRank",
+                "Siapkan interview technical dengan mock interviews",
+                "Network dengan developer lain melalui communities"
+            ]
+        },
+        "Data Scientist": {
+            "description": "Data Scientist menggunakan statistik, programming, dan machine learning untuk mengekstrak insights dari data dan membantu business decision making. Mereka bekerja dengan data exploration, modeling, dan visualization.",
+            "why_suitable": [
+                "Anda memiliki kemampuan analitik yang kuat",
+                "Python dan statistical knowledge Anda cukup",
+                "Passion untuk data analysis sangat terlihat"
+            ],
+            "salary_range": "Rp 7.000.000 - Rp 22.000.000/bulan",
+            "skills_required": [
+                {"skill": "Python/R & Data Libraries", "description": "Pandas, NumPy, Scikit-learn untuk data manipulation"},
+                {"skill": "Statistics & Math", "description": "Probabilitas, inferensi statistik, linear algebra"},
+                {"skill": "Machine Learning", "description": "Supervised learning, unsupervised learning, model evaluation"},
+                {"skill": "Data Visualization", "description": "Matplotlib, Seaborn, Tableau untuk communicate insights"},
+                {"skill": "SQL & Databases", "description": "Query data dari berbagai sumber dan data engineering basics"}
+            ],
+            "pros": [
+                "Role yang sangat demanded di industri modern",
+                "Kesempatan untuk solve real business problems",
+                "Salary dan benefits yang competitive",
+                "Terus learn tentang cutting-edge AI/ML",
+                "High impact pada business decision making"
+            ],
+            "cons": [
+                "Data quality issues sering menghambat project",
+                "Model training bisa consuming resources & time",
+                "Gap antara model dan production deployment",
+                "Requires strong math background yang challenging",
+                "Balancing antara theory dan practical implementation"
+            ],
+            "career_prospect": "Data Scientists sangat diperlukan di semua industri. Bisa evolve menjadi ML Engineer, Analytics Lead, atau Chief Data Officer.",
+            "next_steps": [
+                "Master Python, pandas, NumPy, scikit-learn thoroughly",
+                "Pelajari statistics dan linear algebra dengan mendalam",
+                "Kerjakan real datasets dari Kaggle competitions",
+                "Buat end-to-end ML projects dan publish",
+                "Belajar big data tools (Spark, Hadoop) untuk enterprise scale",
+                "Deep learning dengan TensorFlow/PyTorch jika interested"
+            ]
+        },
+        "Product Manager": {
+            "description": "Product Manager bertanggung jawab untuk strategizing, developing, dan marketing produk. Mereka menjadi bridge antara customer, engineering, dan business. Mereka focus pada product vision dan execution.",
+            "why_suitable": [
+                "Leadership dan communication skills Anda sangat bagus",
+                "Anda paham business strategy dan market trends",
+                "Kemampuan decision making Anda solid"
+            ],
+            "salary_range": "Rp 8.000.000 - Rp 25.000.000/bulan",
+            "skills_required": [
+                {"skill": "Product Strategy", "description": "Membuat product vision, roadmap, dan prioritization"},
+                {"skill": "User Research", "description": "Memahami user needs melalui research dan feedback"},
+                {"skill": "Analytics & Metrics", "description": "Tracking KPI dan menggunakan data untuk decisions"},
+                {"skill": "Communication", "description": "Present ideas, align stakeholders, provide clarity"},
+                {"skill": "Leadership", "description": "Influence tanpa authority dan manage teams"}
+            ],
+            "pros": [
+                "Sangat impactful - mempengaruhi jutaan users",
+                "Diverse work melibatkan berbagai skill sets",
+                "Compensation dan status dalam industri tech sangat baik",
+                "Opportunities untuk entrepreneurship dan ownership",
+                "Continuous learning tentang business dan technology"
+            ],
+            "cons": [
+                "Ambiguous role dengan conflicting priorities",
+                "Dealing dengan politics dan stakeholder management complex",
+                "Failure rate tinggi - tidak semua products succeed",
+                "High stress dengan multiple dependencies",
+                "Technical skills tidak begitu di-appreciate despite importance"
+            ],
+            "career_prospect": "PM dengan track record bisa menjadi Director of Product, Chief Product Officer, atau start own company. Sangat valued di tech industry.",
+            "next_steps": [
+                "Pelajari product management frameworks dan methodologies",
+                "Deepen understanding tentang your industry/market",
+                "Build skills dalam data analysis dan metrics",
+                "Practice user research dan customer interviews",
+                "Develop business acumen dan understanding P&L",
+                "Network dengan PMs dari leading tech companies"
+            ]
+        }
+    }
+    
+    # Get job details atau gunakan default
+    details = job_details_db.get(job_title, {
+        "description": f"{job_title} adalah posisi yang menarik dengan prospek karir yang bagus. Posisi ini memerlukan dedikasi dan continuous learning untuk berkembang.",
+        "why_suitable": [
+            "Skill dan experience Anda match dengan requirements",
+            "Career path Anda aligned dengan posisi ini"
+        ],
+        "salary_range": "Rp 5.000.000 - Rp 15.000.000/bulan",
+        "skills_required": [
+            {"skill": "Core Skills", "description": "Dasar-dasar yang diperlukan untuk posisi ini"},
+            {"skill": "Advanced Skills", "description": "Skills lanjutan untuk standout di role ini"}
+        ],
+        "pros": [
+            "Good career growth potential",
+            "Interesting and challenging work"
+        ],
+        "cons": [
+            "Requires continuous learning",
+            "Market competition is increasing"
+        ],
+        "career_prospect": f"Career dalam {job_title} memiliki prospek yang bagus dengan banyak opportunities untuk growth dan specialization.",
+        "next_steps": [
+            "Improve relevant skills",
+            "Build professional network",
+            "Create strong portfolio",
+            "Prepare for interview",
+            "Stay updated with industry trends"
+        ]
+    })
+    
+    return jsonify(details)
+
+@app.route('/api/explain_job', methods=['POST'])
+def explain_job_with_ai():
+    """Generate job explanation using LLM API"""
+    try:
+        data = request.json
+        job_title = data.get('job', '')
+        user_skills = data.get('skills', [])
+        user_experience = data.get('experience', '')
+        
+        if not job_title:
+            return jsonify({
+                "success": False,
+                "error": "Job title is required"
+            }), 400
+        
+        # Try LLM first
+        llm_response = None
+        if USE_LLM:
+            llm_response = generate_job_explanation_with_llm(job_title, user_skills, user_experience)
+        
+        # Use LLM response if available, otherwise fallback to database
+        if llm_response:
+            return jsonify({
+                "success": True,
+                "source": "ai",
+                **llm_response
+            })
+        elif FALLBACK_TO_DATABASE:
+            # Fallback to static database
+            job_details_db = {
+                "Graphic Designer": {
+                    "description": "Graphic Designer menciptakan visual content untuk berbagai media. Mereka menggunakan software design untuk membuat logo, marketing materials, dan brand identity.",
+                    "why_suitable": [
+                        "Anda memiliki kreativitas dan eye for design",
+                        "Skill visual Anda cocok untuk role ini",
+                        "Portfolio Anda menunjukkan potensi yang bagus"
+                    ],
+                    "salary_range": "Rp 4.000.000 - Rp 12.000.000/bulan",
+                    "skills_required": [
+                        {"skill": "Adobe Creative Suite", "description": "Photoshop, Illustrator, InDesign untuk design work"},
+                        {"skill": "Typography", "description": "Pemahaman font pairing dan hierarchy"},
+                        {"skill": "Color Theory", "description": "Penggunaan warna yang efektif"},
+                        {"skill": "Layout Design", "description": "Komposisi visual yang menarik"},
+                        {"skill": "Branding", "description": "Memahami brand identity dan consistency"}
+                    ],
+                    "pros": [
+                        "Kreativitas tanpa batas",
+                        "Portfolio yang impressive",
+                        "Freelance opportunities banyak",
+                        "Remote work friendly",
+                        "Industri yang terus berkembang"
+                    ],
+                    "cons": [
+                        "Deadline yang ketat",
+                        "Revisi yang banyak dari client",
+                        "Kompetisi yang tinggi",
+                        "Perlu update skill terus",
+                        "Gaji awal relatif rendah"
+                    ],
+                    "career_prospect": "Graphic Designer bisa berkembang menjadi Art Director, Creative Director, atau memulai design agency sendiri. Demand untuk designer terus meningkat.",
+                    "next_steps": [
+                        "Master Adobe Creative Suite",
+                        "Build portfolio yang strong",
+                        "Belajar design principles",
+                        "Join design communities",
+                        "Practice dengan real projects",
+                        "Stay updated dengan design trends"
+                    ]
+                },
+                "Backend Developer": {
+                    "description": "Backend Developer membangun server-side logic, database, dan API yang menjadi fondasi aplikasi. Mereka fokus pada performance, security, dan scalability.",
+                    "why_suitable": [
+                        "Skill programming Anda solid",
+                        "Logical thinking Anda kuat",
+                        "Anda suka problem solving"
+                    ],
+                    "salary_range": "Rp 6.000.000 - Rp 20.000.000/bulan",
+                    "skills_required": [
+                        {"skill": "Programming Languages", "description": "Python, Java, Node.js, atau Go"},
+                        {"skill": "Database Management", "description": "SQL, NoSQL, query optimization"},
+                        {"skill": "API Development", "description": "RESTful API, GraphQL design"},
+                        {"skill": "Version Control", "description": "Git workflow dan collaboration"},
+                        {"skill": "Cloud Services", "description": "AWS, Google Cloud, atau Azure"}
+                    ],
+                    "pros": [
+                        "High demand di job market",
+                        "Salary yang competitive",
+                        "Remote work opportunities",
+                        "Continuous learning",
+                        "Career growth yang jelas"
+                    ],
+                    "cons": [
+                        "Deadline pressure tinggi",
+                        "On-call duties kadang diperlukan",
+                        "Debugging bisa frustrating",
+                        "Technology berubah cepat",
+                        "Burnout risk jika tidak manage well"
+                    ],
+                    "career_prospect": "Backend Developer bisa menjadi Senior Developer, Tech Lead, Software Architect, atau CTO. Banyak opportunities untuk specialization.",
+                    "next_steps": [
+                        "Master satu bahasa pemrograman",
+                        "Pelajari database design",
+                        "Build API projects",
+                        "Learn cloud platforms",
+                        "Practice dengan open source",
+                        "Prepare untuk technical interviews"
+                    ]
+                }
+            }
+            
+            details = job_details_db.get(job_title, {
+                "description": f"{job_title} adalah posisi yang menarik dengan prospek karir yang bagus.",
+                "why_suitable": [
+                    "Skill Anda match dengan requirements",
+                    "Experience Anda sesuai dengan posisi ini"
+                ],
+                "salary_range": "Rp 5.000.000 - Rp 15.000.000/bulan",
+                "skills_required": [
+                    {"skill": "Core Skills", "description": "Fundamental skills untuk posisi ini"},
+                    {"skill": "Technical Skills", "description": "Skills teknis yang diperlukan"},
+                    {"skill": "Soft Skills", "description": "Communication dan teamwork"}
+                ],
+                "pros": [
+                    "Career growth potential",
+                    "Interesting work",
+                    "Good compensation"
+                ],
+                "cons": [
+                    "Requires continuous learning",
+                    "Market competition"
+                ],
+                "career_prospect": f"Career dalam {job_title} memiliki prospek yang bagus dengan opportunities untuk growth.",
+                "next_steps": [
+                    "Improve relevant skills",
+                    "Build portfolio",
+                    "Network dengan professionals",
+                    "Prepare untuk interview"
+                ]
+            })
+            
+            return jsonify({
+                "success": True,
+                "source": "database",
+                **details
+            })
+        else:
+            return jsonify({
+                "success": False,
+                "error": "LLM unavailable and fallback disabled"
+            }), 503
+            
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+# New Feature: Career Chat with AI
+@app.route('/chat', methods=['POST'])
+def chat():
+    """Chat endpoint untuk career counseling dengan respons intelligent"""
+    try:
+        data = request.json
+        message = data.get('message', '').strip()
+        message_lower = message.lower()
+        context = data.get('context')
+        
+        job_title = context.get('jobTitle') if context else None
+        
+        # Try LLM first
+        if USE_LLM:
+            llm_response = generate_chat_response_with_llm(message, job_title)
+            if llm_response:
+                return jsonify({
+                    "success": True,
+                    "response": llm_response,
+                    "source": "ai"
+                })
+        
+        # Fallback to keyword matching - simplified version
+        response = f"""Terima kasih pertanyaannya! 😊
+
+Saya bisa membantu dengan:
+- 🎯 Skill yang diperlukan
+- 💰 Informasi gaji & kompensasi
+- 🎤 Interview preparation
+- 📚 Learning path & resources
+- 📈 Career progression
+
+Silakan tanyakan lebih spesifik!"""
+        
+        return jsonify({
+            "success": True,
+            "response": response,
+            "source": "keyword_matching"
+        })
+        
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+if __name__ == '__main__':
+    print("Smart Career Recommender API running on http://localhost:5000")
+    app.run(debug=False, host='0.0.0.0', port=5000, threaded=True, use_reloader=False)
+
+        
+        # Keywords untuk berbagai topik
+        skill_keywords = ['skill', 'kemampuan', 'keahlian', 'perlu', 'penting', 'requirement', 'diperlukan', 'belajar', 'belajarapa']
+        salary_keywords = ['gaji', 'salary', 'income', 'earning', 'kompen', 'upah', 'imbalan', 'berapa', 'expect', 'ekspektasi']
+        interview_keywords = ['interview', 'persiapan', 'wawancara', 'interview', 'pertanyaan', 'tips', 'cara', 'persiapkan']
+        challenge_keywords = ['tantangan', 'challenge', 'difficulty', 'sulit', 'masalah', 'hambatan', 'konsekuensi', 'negative', 'kekurangan']
+        learning_keywords = ['belajar', 'learning', 'path', 'roadmap', 'curriculum', 'course', 'kursus', 'training', 'develop', 'improve']
+        network_keywords = ['network', 'networking', 'komunitas', 'komunitas', 'connect', 'relationship', 'hubungan', 'teman', 'group']
+        career_keywords = ['karir', 'career', 'prospek', 'future', 'growth', 'advancement', 'promotion', 'develop']
+        work_life_keywords = ['work life', 'balance', 'stress', 'burnout', 'kesehatan', 'mental', 'jam', 'waktu', 'cuti']
+        salary_neg_keywords = ['berapa gaji mana', 'gaji mana', 'salary mana']
+        
+        response = ""
+        
+        # Check keyword matches
+        if any(kw in msg for kw in skill_keywords):
+            if job:
+                response = f"""Untuk posisi {job}, skill yang paling kritis adalah:
+
+1. **Hard Skills (Technical)**
+   - Skill teknis spesifik untuk role
+   - Tools dan platform yang relevan
+   - Pemahaman mendalam tentang domain
+
+2. **Soft Skills (Essential)**
+   - Communication & collaboration
+   - Problem-solving & critical thinking
+   - Time management & leadership
+
+3. **Priority untuk Development**
+   - Master fundamentals terlebih dahulu
+   - Praktik dengan real projects
+   - Continuous learning mindset
+
+Strategi: Identifikasi skill gap, buat action plan, dan mulai belajar dari yang paling penting."""
+            else:
+                response = """Skills yang paling dibutuhkan saat ini:
+
+1. **Technical Skills**
+   - Programming / Technical knowledge
+   - Data analysis & digital tools
+   - Cloud platforms & automation
+
+2. **Soft Skills**
+   - Communication & leadership
+   - Problem-solving abilities
+   - Adaptability & learning agility
+
+3. **Tips Skill Development**
+   - Focus pada market demand
+   - Build portfolio dengan projects
+   - Learn by doing, bukan hanya teori
+   - Network dengan professionals
+
+Rekomendasi: Identifikasi interest Anda, pilih skill relevant, dan mulai belajar hari ini."""
+                
+        elif any(kw in msg for kw in salary_keywords):
+            if any(kw in msg for kw in salary_neg_keywords):
+                response = "Pertanyaan gaji yang lebih spesifik akan lebih membantu. Bisa Anda jelaskan:\n1. Level mana (junior/mid/senior)?\n2. Lokasi/industri apa?\n3. Role spesifik apa?"
+            elif job:
+                response = f"""Ekspektasi gaji untuk {job}:
+
+**Indonesia Market (2024)**
+- Junior Level: Rp 5-8 juta/bulan
+- Mid Level: Rp 8-15 juta/bulan  
+- Senior Level: Rp 15-25+ juta/bulan
+
+Faktor yang mempengaruhi:
+- Pengalaman & track record
+- Lokasi (Jakarta lebih tinggi)
+- Ukuran & jenis perusahaan
+- Skill & certifications
+- Negotiation skills
+
+Tips Negosiasi:
+1. Research market rate terlebih dahulu
+2. Highlight achievements & value
+3. Consider total compensation (benefits)
+4. Be flexible dengan non-salary benefits
+5. Don't sell yourself short
+
+Ingat: Gaji awal bukan segalanya, growth potential lebih penting."""
+            else:
+                response = """Info Gaji di Indonesia (2024):
+
+**Berdasarkan Level Experience**
+- Entry Level: Rp 3-6 juta
+- Junior: Rp 5-10 juta
+- Mid: Rp 10-18 juta
+- Senior: Rp 18-30+ juta
+
+**Faktor yang Mempengaruhi**
+1. Industri (Tech > Finance > Retail)
+2. Lokasi (Jakarta > Outside)
+3. Perusahaan (Startup < Korporat)
+4. Skill & experience
+5. Negotiation skill
+
+**Tips Salary Negotiation**
+- Research industry rate
+- Highlight your value
+- Propose range (jangan fix)
+- Consider total package
+- Be ready to walk away
+
+Ingin info spesifik untuk role tertentu?"""
+                
+        elif any(kw in msg for kw in interview_keywords):
+            if job:
+                response = f"""Persiapan Interview untuk {job}:
+
+**Sebelum Interview (1-2 minggu)**
+1. Research perusahaan: visi, produk, kultur
+2. Prepare STAR stories dari pengalaman
+3. Revisi resume & portfolio
+4. Practice common questions
+5. Prepare 3-5 pertanyaan untuk mereka
+
+**Tipe Pertanyaan yang Biasa Ditanya**
+1. Behavioral: "Tell me about..."
+2. Technical: Problem solving, coding
+3. Situational: "What would you do if..."
+4. Company specific: Tentang produk/vision
+
+**Tips Saat Interview**
+- Datang 15 menit lebih awal
+- Eye contact & confident posture
+- Listen carefully, jawab dengan fokus
+- Use STAR method untuk stories
+- Ask thoughtful questions
+- Follow up dengan thank you
+
+**Common Mistakes to Avoid**
+- Lambat sampai / unprofessional
+- Bad mouthing previous company
+- Not asking questions
+- Lying about experience
+- Poor body language
+
+Persiapkan mock interview dengan teman atau mentor!"""
+            else:
+                response = """Interview Preparation Tips:
+
+**Before Interview**
+1. Research company thoroughly
+2. Prepare stories (STAR method)
+3. Practice answering common questions
+4. Prepare questions to ask
+5. Check what to bring (resume, portfolio)
+
+**During Interview**
+- Professional appearance
+- Good eye contact & posture
+- Listen carefully, answer concisely
+- Use examples from experience
+- Ask thoughtful questions
+- Be authentic & positive
+
+**Common Questions**
+1. "Tell me about yourself"
+2. "Why do you want this job?"
+3. "What are your strengths/weaknesses?"
+4. "Where do you see yourself in 5 years?"
+5. "Tell me about a challenge you overcome"
+
+**After Interview**
+- Send thank you email
+- Wait patiently for response
+- Follow up if no response in 1 week
+
+Confident preparation = successful interview!"""
+                
+        elif any(kw in msg for kw in challenge_keywords):
+            if job:
+                response = f"""Tantangan dalam Karir {job}:
+
+**Challenges yang Realistis**
+1. Constant learning requirement
+2. Imposter syndrome
+3. Fast-paced environment
+4. Deadline pressure
+5. Work-life balance
+
+**Cara Mengatasi**
+- Create structured learning plan
+- Join communities & mentor others
+- Take regular breaks
+- Set boundaries (work hours)
+- Find work-life balance strategies
+- Talk to mentors when struggling
+
+**Mindset untuk Success**
+- Embrace continuous learning
+- View challenges as growth
+- Build support network
+- Track progress & celebrate wins
+- Stay passionate & curious
+
+Challenges adalah bagian dari growth. Yang penting adalah mindset dan support system."""
+            else:
+                response = """Tantangan Umum dalam Karir:
+
+**Professional Challenges**
+- Fast-changing technology
+- Intense competition
+- High expectations
+- Multiple deadlines
+- Work pressure & stress
+
+**Personal Challenges**
+- Work-life balance
+- Self-doubt & imposter syndrome
+- Financial pressure
+- Skill gaps
+- Networking anxiety
+
+**Cara Mengatasi**
+1. Build strong support system
+2. Invest in continuous learning
+3. Practice work-life boundaries
+4. Find mentor/coach
+5. Join professional communities
+6. Regular self-reflection
+7. Celebrate small wins
+
+Remember: Everyone faces challenges. Resilience is key!"""
+        
+        elif any(kw in msg for kw in learning_keywords):
+            if job:
+                response = f"""Learning Path untuk {job}:
+
+**Foundation Level (3-6 bulan)**
+- Core fundamentals & concepts
+- Key tools & platforms
+- Basic projects & exercises
+- Industry certifications (if applicable)
+
+**Intermediate Level (6-12 bulan)**
+- Advanced techniques & patterns
+- Real projects dengan complexity
+- Specialization dalam area tertentu
+- Networking dengan professionals
+
+**Advanced Level (1-2 tahun)**
+- Expertise dalam specific domain
+- Leadership & mentoring skills
+- Advanced projects & contributions
+- Industry recognition
+
+**Resources untuk Belajar**
+- Online courses (Udemy, Coursera, etc)
+- YouTube channels & blogs
+- Books & documentation
+- Practice projects
+- Join communities
+- Find mentor/coach
+
+**Best Practices**
+- Consistent daily practice
+- Build real projects
+- Learn by doing
+- Share knowledge (blog/talk)
+- Iterate & improve
+
+Timeline tergantung intensity & prior experience."""
+            else:
+                response = """Learning & Development Strategy:
+
+**Choose Your Path**
+1. Skill-based: Deep in specific skill
+2. Role-based: Prepare untuk target job
+3. Industry-based: Master domain knowledge
+
+**Learning Resources**
+- Online platforms (Udemy, Coursera, Codecademy)
+- YouTube channels & free resources
+- Books & official documentation
+- Real projects & side gigs
+- Communities & groups
+- Mentorship programs
+
+**Effective Learning Tips**
+1. Set clear, measurable goals
+2. Create structured plan
+3. Practice consistently (daily)
+4. Build real projects
+5. Review & reflect regularly
+6. Share knowledge with others
+7. Find accountability partner
+
+**From Theory to Practice**
+- Learn concept
+- Do hands-on exercises
+- Build small project
+- Build bigger project
+- Contribute to open source
+- Help others learn
+
+Progress takes time. Focus on consistency!"""
+        
+        elif any(kw in msg for kw in network_keywords):
+            response = """Strategi Networking untuk Karir:
+
+**Cara Membangun Network**
+1. Attend industry events & conferences
+2. Join professional communities/groups
+3. Connect on LinkedIn dengan smart
+4. Participate in online forums
+5. Contribute to open source
+6. Speak at meetups or write blogs
+7. Be active in alumni network
+
+**Tips Networking Efektif**
+- Be genuine & helpful (bukan transactional)
+- Listen more, talk less
+- Follow up dengan reguler
+- Provide value first
+- Respect people's time
+- Build long-term relationships
+- Keep in touch with old connections
+
+**Online Networking**
+- LinkedIn: optimize profile, post regularly
+- Twitter/Social: share insights & interact
+- Discord/Slack: join communities
+- GitHub: contribute & build reputation
+- Medium/Blog: write & share knowledge
+
+**Offline Networking**
+- Events & conferences
+- Meetups & workshops
+- Coffee chats dengan mentors
+- Industry associations
+- Volunteer projects
+
+Network adalah aset jangka panjang Anda!"""
+        
+        elif any(kw in msg for kw in career_keywords):
+            if job:
+                response = f"""Prospek Karir untuk {job}:
+
+**Growth Opportunities**
+- Promosi ke Senior/Principal level
+- Specialization dalam area tertentu
+- Leadership roles (Team Lead, Manager)
+- Switch ke related domains
+- Entrepreneurship (startup/freelance)
+
+**Progression Timeline**
+- 1-2 tahun: Dapatkan foundational skills
+- 2-5 tahun: Build expertise & reputation
+- 5+ tahun: Leadership & strategic roles
+
+**Tips untuk Advance**
+1. Master your current role
+2. Build strong reputation
+3. Develop leadership skills
+4. Create impact & visibility
+5. Build network strategically
+6. Consider certifications
+7. Seek mentorship
+
+**Alternatives Beyond Traditional**
+- Freelancing / Consulting
+- Startup founding
+- Teaching / Training
+- Open source leadership
+- Content creation
+
+Sukses adalah journey, bukan destination!"""
+            else:
+                response = """Career Growth Strategy:
+
+**Define Your Career Vision**
+1. What role/industry interests you?
+2. Where do you want to be in 5 years?
+3. What impact you want to make?
+4. What skills needed?
+
+**Growth Plan**
+- Year 1: Master fundamentals
+- Year 2-3: Develop expertise
+- Year 3-5: Build leadership skills
+- Year 5+: Strategic positions
+
+**Key to Advancement**
+- Continuous skill development
+- Build strong reputation
+- Deliver measurable results
+- Develop soft skills
+- Build power network
+- Show leadership potential
+
+**Career Paths Options**
+- Technical expertise (Architect/Principal)
+- Management (Team Lead → Director)
+- Entrepreneurship (Start a company)
+- Consulting (Expert advisor)
+- Teaching (Mentor/Trainer)
+- Hybrid (Mix of above)
+
+What matters is finding YOUR path!"""
+        
+        elif any(kw in msg for kw in work_life_keywords):
+            response = """Work-Life Balance & Wellness:
+
+**Setting Boundaries**
+- Define clear work hours
+- No emails after hours (optional exceptions)
+- Take full vacation/sick days
+- Learn to say NO
+- Delegate when possible
+- Don't glorify overworking
+
+**Stress Management**
+- Exercise regularly
+- Meditation / mindfulness
+- Hobbies & personal interest
+- Quality time with family/friends
+- Good sleep schedule
+- Healthy diet
+
+**Signs of Burnout**
+- Constant exhaustion
+- Loss of motivation
+- Reduced productivity
+- Health issues
+- Irritability
+- Cynicism
+
+**When You're Burning Out**
+1. Talk to your manager
+2. Take time off immediately
+3. Seek professional help if needed
+4. Evaluate your priorities
+5. Consider role/company change
+
+**Sustainable Career**
+- Balance is not 50-50 daily, but over time
+- Career is marathon, not sprint
+- Your health > Your job
+- Success + happiness = fulfillment
+
+Remember: A good company values your wellbeing!"""
+        
+        else:
+            # Default response
+            if job:
+                response = f"""Terima kasih pertanyaannya tentang {job}! 😊
+
+Saya bisa membantu dengan:
+- 🎯 Skill yang diperlukan
+- 💰 Informasi gaji & kompensasi
+- 🎤 Interview preparation
+- ⚠️ Tantangan & cara mengatasinya
+- 📚 Learning path & resources
+- 🤝 Networking strategies
+- 📈 Career progression
+- ⚖️ Work-life balance
+
+Atau ada pertanyaan spesifik lainnya?"""
+            else:
+                response = f"""Pertanyaan yang bagus! 😊
+
+Saya bisa membantu dengan banyak topik karir:
+- 🎓 Skill development & learning paths
+- 💼 Job search strategies
+- 💰 Salary negotiation tips
+- 🎤 Interview preparation
+- 📈 Career planning & growth
+- 🤝 Networking & relationships
+- ⚖️ Work-life balance
+- 🚀 Entrepreneurship basics
+- 📊 Industry insights
+
+Pertanyaan atau topik apa yang menarik Anda?"""
+        
+        return response
+    
+    # Fallback to keyword matching
+    response = get_response(message_lower, job_title)
+    
+    return jsonify({
+        "success": True,
+        "response": response,
+        "source": "keyword_matching"
+    })
+    
+except Exception as e:
+    return jsonify({
+        "success": False,
+        "error": str(e)
+    }), 500
+
+if __name__ == '__main__':
+    print("Smart Career Recommender API running on http://localhost:5000")
+    app.run(debug=False, host='0.0.0.0', port=5000, threaded=True, use_reloader=False)
