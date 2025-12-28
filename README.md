@@ -2,6 +2,8 @@
 
 Aplikasi sistem cerdas yang memberikan rekomendasi pekerjaan dan skill berdasarkan input pengguna menggunakan Machine Learning dan Rule-Based Engine.
 
+📖 **[Baca Manual Lengkap](USER_MANUAL.md)** - Panduan penggunaan detail untuk aplikasi ini
+
 ## Fitur Utama
 
 ✨ **User Input Form**
