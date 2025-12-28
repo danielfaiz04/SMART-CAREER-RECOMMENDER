@@ -1,5 +1,5 @@
 [phases.setup]
-nixPkgs = ['...', 'python311']
+nixPkgs = ['python311']
 
 [phases.install]
 cmds = [
@@ -12,4 +12,4 @@ cmds = [
 ]
 
 [start]
-cmd = 'python backend/app.py'
+cmd = 'python app.py'
